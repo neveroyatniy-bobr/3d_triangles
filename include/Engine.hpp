@@ -18,8 +18,7 @@ private:
     Scene scene_;
     Camera camera_;
 
-    // Для нашего целевого сценария начинаем с cell size = 1.
-    UniformGrid grid_{1.0f};
+    UniformGrid grid_;
 
     IntersectionSystem intersectionSystem_;
     IntersectionFlags intersections_;
