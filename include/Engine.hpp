@@ -20,7 +20,6 @@ private:
 
     UniformGrid grid_;
 
-    IntersectionSystem intersectionSystem_;
     IntersectionFlags intersections_;
     Renderer renderer_;
 };
