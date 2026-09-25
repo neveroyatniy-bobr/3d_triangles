@@ -14,24 +14,24 @@ public:
     // Construction
     // ========================================================
 
-    // Создаёт перспективную камеру.
+    // Создаёт перспективную Camera.
     //
     // position:
-    //     Положение камеры в мировых координатах.
+    //     Положение камеры в world-space.
     //
     // target:
-    //     Точка, на которую камера смотрит.
+    //     Точка мира, на которую смотрит Camera.
     //
-    //     Обязательное условие:
+    // Обязательно:
     //
-    //         target != position
+    //     target != position
     //
     // worldUp:
-    //     Направление "вверх" для мира.
+    //     Глобальное направление "вверх".
     //
     // Обычно:
     //
-    //         { 0, 1, 0 }
+    //     { 0, 1, 0 }
     //
     // Может быть ненормализованным.
     //
@@ -60,13 +60,13 @@ public:
     //
     //     farPlane > nearPlane
     //
-    // Все числовые параметры должны быть finite.
+    // Все числовые значения должны быть finite.
     //
-    // При нарушении инвариантов constructor должен бросать:
+    // При нарушении инвариантов constructor бросает:
     //
     //     std::invalid_argument
     //
-    // После создания Camera обязана иметь корректный
+    // После создания должен существовать корректный
     // ортонормированный базис:
     //
     //     forward_
@@ -87,15 +87,13 @@ public:
     // Camera state
     // ========================================================
 
-    // Текущее положение камеры в world-space.
+    // Текущее положение Camera в world-space.
     [[nodiscard]]
     const Vec3& position() const noexcept;
 
 
-    // Нормализованный вектор, направленный туда,
-    // куда камера смотрит.
-    //
-    // Это WORLD-SPACE направление.
+    // Нормализованный WORLD-SPACE вектор,
+    // направленный туда, куда Camera смотрит.
     //
     // Например:
     //
@@ -111,41 +109,40 @@ public:
     const Vec3& forward() const noexcept;
 
 
-    // Нормализованная локальная ось камеры вправо.
+    // Нормализованная локальная ось Camera вправо.
     //
-    // Всегда:
+    // Всегда перпендикулярна:
     //
-    //     dot(right, forward) == 0
+    //     forward()
+    //     up()
     //
-    //     dot(right, up) == 0
-    //
-    // с учётом обычной погрешности float.
+    // с учётом погрешности float.
     [[nodiscard]]
     const Vec3& right() const noexcept;
 
 
-    // Нормализованная локальная ось камеры вверх.
+    // Нормализованная локальная ось Camera вверх.
     //
-    // Это не обязательно ровно worldUp.
+    // Это НЕ обязательно исходный worldUp.
     //
-    // worldUp задаёт глобальное понятие верха,
+    // worldUp определяет глобальное понятие "верх",
     // а up является частью текущего ортонормированного
-    // базиса камеры.
+    // базиса Camera.
     [[nodiscard]]
     const Vec3& up() const noexcept;
 
 
-    // Вертикальный FOV в радианах.
+    // Вертикальный FOV в РАДИАНАХ.
     [[nodiscard]]
     float verticalFovRadians() const noexcept;
 
 
-    // Расстояние до near plane.
+    // Расстояние до near clipping plane.
     [[nodiscard]]
     float nearPlane() const noexcept;
 
 
-    // Расстояние до far plane.
+    // Расстояние до far clipping plane.
     [[nodiscard]]
     float farPlane() const noexcept;
 
@@ -154,9 +151,9 @@ public:
     // Matrices for Renderer
     // ========================================================
 
-    // Возвращает View Matrix для текущего состояния Camera.
+    // Возвращает View Matrix текущей Camera.
     //
-    // Должна быть эквивалентна:
+    // Результат должен быть эквивалентен:
     //
     //     makeViewMatrix(
     //         position(),
@@ -165,22 +162,34 @@ public:
     //         forward()
     //     );
     //
-    // Renderer не должен самостоятельно знать,
-    // как строится View Matrix.
+    // Renderer НЕ должен самостоятельно строить
+    // View Matrix из внутренностей Camera.
+    //
+    // В view-space Camera смотрит вдоль:
+    //
+    //     -Z
+    //
     [[nodiscard]]
     Mat4 viewMatrix() const noexcept;
 
 
-    // Возвращает Perspective Projection Matrix.
+    // Возвращает Vulkan-compatible
+    // Perspective Projection Matrix.
     //
     // aspectRatio передаёт Renderer:
     //
-    //     static_cast<float>(width) / height
+    //     static_cast<float>(width) /
+    //     static_cast<float>(height)
     //
-    // Camera намеренно НЕ хранит размеры окна
-    // и aspect ratio.
+    // Camera намеренно НЕ хранит:
     //
-    // Должна быть эквивалентна:
+    //     window width
+    //     window height
+    //     aspect ratio
+    //
+    // потому что они принадлежат Renderer/viewport.
+    //
+    // Результат должен быть эквивалентен:
     //
     //     makePerspectiveMatrix(
     //         verticalFovRadians(),
@@ -189,8 +198,29 @@ public:
     //         farPlane()
     //     );
     //
-    // Если aspectRatio некорректен,
-    // должна бросить std::invalid_argument.
+    // После perspective divide используется Vulkan NDC:
+    //
+    //     X: [-1, +1]
+    //     Y: [-1, +1]
+    //     Z: [ 0, +1]
+    //
+    // near plane:
+    //
+    //     z = 0
+    //
+    // far plane:
+    //
+    //     z = 1
+    //
+    // Camera НЕ переворачивает Y.
+    //
+    // Renderer делает это через отрицательный
+    // VkViewport::height.
+    //
+    // При некорректном aspectRatio бросает:
+    //
+    //     std::invalid_argument
+    //
     [[nodiscard]]
     Mat4 projectionMatrix(
         float aspectRatio
@@ -201,7 +231,7 @@ public:
     // Position control
     // ========================================================
 
-    // Перемещает Camera вдоль локального forward.
+    // Перемещает Camera вдоль её forward().
     //
     // distance > 0:
     //     движение вперёд.
@@ -209,11 +239,13 @@ public:
     // distance < 0:
     //     движение назад.
     //
-    // Ориентация камеры не изменяется.
-    void moveForward(float distance) noexcept;
+    // Ориентация Camera не изменяется.
+    void moveForward(
+        float distance
+    ) noexcept;
 
 
-    // Перемещает Camera вдоль локальной оси right.
+    // Перемещает Camera вдоль её локальной right().
     //
     // distance > 0:
     //     вправо.
@@ -221,11 +253,13 @@ public:
     // distance < 0:
     //     влево.
     //
-    // Ориентация не изменяется.
-    void moveRight(float distance) noexcept;
+    // Ориентация Camera не изменяется.
+    void moveRight(
+        float distance
+    ) noexcept;
 
 
-    // Перемещает Camera вдоль её ЛОКАЛЬНОЙ оси up.
+    // Перемещает Camera вдоль её ЛОКАЛЬНОЙ up().
     //
     // distance > 0:
     //     вверх.
@@ -233,15 +267,21 @@ public:
     // distance < 0:
     //     вниз.
     //
-    // Важно:
+    // Это именно:
     //
-    // это camera.up(), а не обязательно worldUp_.
-    void moveUp(float distance) noexcept;
+    //     camera.up()
+    //
+    // а не обязательно worldUp_.
+    //
+    // Ориентация Camera не изменяется.
+    void moveUp(
+        float distance
+    ) noexcept;
 
 
-    // Напрямую устанавливает world-space position.
+    // Устанавливает положение Camera напрямую.
     //
-    // Ориентация камеры не меняется.
+    // Ориентация Camera не изменяется.
     void setPosition(
         const Vec3& position
     ) noexcept;
@@ -256,34 +296,42 @@ public:
     // Все углы задаются в РАДИАНАХ.
     //
     // yawRadians:
+    //
     //     Поворот вокруг worldUp_.
     //
     //     Положительное направление соответствует
     //     правилу правой руки вокруг worldUp_.
     //
     // pitchRadians:
-    //     Поворот вокруг текущей локальной right_.
     //
-    //     Положительный pitch при стандартном:
+    //     Поворот вверх/вниз относительно локальной
+    //     оси right_.
+    //
+    //     При стандартном:
     //
     //         worldUp = { 0, 1, 0 }
     //
-    //     должен направлять взгляд вверх.
+    //     положительный pitch должен направлять
+    //     взгляд вверх.
     //
-    // После поворота необходимо восстановить
-    // корректный ортонормированный базис:
+    // После поворота нужно восстановить корректный
+    // ортонормированный базис:
     //
     //     forward_
     //     right_
     //     up_
     //
-    // Camera никогда не должна оказываться в состоянии,
-    // где forward_ параллелен worldUp_.
+    // Camera никогда не должна попасть в состояние,
+    // где:
     //
-    // Реализация может ограничивать pitch так,
-    // чтобы камера не достигала полюса.
+    //     forward_ || worldUp_
     //
-    // Конкретная величина ограничения является
+    // потому что тогда невозможно определить right_.
+    //
+    // Реализация должна ограничивать pitch,
+    // чтобы Camera не достигала такого состояния.
+    //
+    // Точное значение ограничения является
     // внутренней деталью реализации.
     void rotate(
         float yawRadians,
@@ -291,27 +339,32 @@ public:
     );
 
 
-    // Направляет Camera на world-space точку target.
+    // Направляет Camera на конкретную world-space точку.
     //
-    // position не изменяется.
+    // position_ не изменяется.
     //
     // После выполнения:
     //
-    //     forward =
-    //         normalize(target - position)
+    //     forward_ =
+    //         normalize(target - position_)
     //
-    // Затем необходимо перестроить right/up.
+    // После этого необходимо перестроить:
     //
-    // Некорректно:
+    //     right_
+    //     up_
     //
-    //     target == position
+    // Некорректные случаи:
     //
-    // а также направление взгляда,
-    // параллельное worldUp_.
+    //     target == position_
     //
-    // При некорректном target бросает:
+    // либо:
+    //
+    //     новое направление параллельно worldUp_
+    //
+    // В этих случаях бросает:
     //
     //     std::invalid_argument
+    //
     void lookAt(
         const Vec3& target
     );
@@ -325,21 +378,26 @@ public:
     //
     // Требования:
     //
+    //     verticalFovRadians finite
+    //
     //     0 < verticalFovRadians < pi
+    //
+    //     nearPlane finite
     //
     //     nearPlane > 0
     //
+    //     farPlane finite
+    //
     //     farPlane > nearPlane
     //
-    // Все значения должны быть finite.
-    //
-    // При ошибке бросает:
+    // При нарушении требований бросает:
     //
     //     std::invalid_argument
     //
     // Aspect ratio здесь отсутствует намеренно:
     //
-    // он определяется размером viewport Renderer.
+    // он определяется текущим viewport Renderer.
+    //
     void setPerspective(
         float verticalFovRadians,
         float nearPlane,
@@ -353,15 +411,25 @@ private:
     // Transform
     // ========================================================
 
+    // Положение в world-space.
     Vec3 position_;
+
 
     // WORLD-SPACE направление взгляда.
     //
     // Всегда нормализовано.
     Vec3 forward_;
 
-    // Ортонормированные локальные оси Camera.
+
+    // Локальная ось Camera вправо.
+    //
+    // Всегда нормализована.
     Vec3 right_;
+
+
+    // Локальная ось Camera вверх.
+    //
+    // Всегда нормализована.
     Vec3 up_;
 
 
@@ -369,22 +437,26 @@ private:
     // Global orientation reference
     // ========================================================
 
-    // Глобальное понятие "верх".
+    // Глобальное направление "вверх".
     //
-    // После constructor хранится нормализованным.
+    // После constructor должно храниться
+    // в нормализованном виде.
     //
-    // Например:
+    // Стандартное значение:
     //
     //     { 0, 1, 0 }
+    //
     Vec3 worldUp_;
 
 
     // ========================================================
-    // Perspective
+    // Perspective parameters
     // ========================================================
 
     float verticalFovRadians_;
+
     float nearPlane_;
+
     float farPlane_;
 
 
@@ -392,37 +464,63 @@ private:
     // Internal helpers
     // ========================================================
 
-    // Перестраивает right_ и up_ из forward_ и worldUp_.
+    // Перестраивает right_ и up_ на основе:
     //
-    // Для нашей правосторонней системы координат:
+    //     forward_
+    //     worldUp_
     //
-    //     right =
-    //         normalize(cross(forward, worldUp))
+    // Для принятой нами правосторонней системы:
     //
-    //     up =
-    //         cross(right, forward)
+    //     right_ =
+    //         normalize(
+    //             cross(forward_, worldUp_)
+    //         );
+    //
+    //     up_ =
+    //         cross(right_, forward_);
     //
     // После выполнения должны выполняться:
     //
-    //     length(forward_) == 1
-    //     length(right_)   == 1
-    //     length(up_)      == 1
+    //     length(forward_) ~= 1
+    //
+    //     length(right_) ~= 1
+    //
+    //     length(up_) ~= 1
     //
     // и:
     //
-    //     dot(forward_, right_) == 0
-    //     dot(forward_, up_)    == 0
-    //     dot(right_, up_)      == 0
+    //     dot(forward_, right_) ~= 0
     //
-    // с допустимой погрешностью float.
+    //     dot(forward_, up_) ~= 0
+    //
+    //     dot(right_, up_) ~= 0
+    //
+    // Здесь "~=" означает допустимую погрешность float,
+    // а не точное сравнение.
+    //
     void rebuildBasis();
 
 
     // Проверяет параметры perspective projection.
     //
-    // При нарушении требований бросает:
+    // Должно проверяться:
+    //
+    //     finite(verticalFovRadians)
+    //
+    //     0 < verticalFovRadians < pi
+    //
+    //     finite(nearPlane)
+    //
+    //     nearPlane > 0
+    //
+    //     finite(farPlane)
+    //
+    //     farPlane > nearPlane
+    //
+    // При ошибке бросает:
     //
     //     std::invalid_argument
+    //
     static void validatePerspective(
         float verticalFovRadians,
         float nearPlane,
@@ -430,4 +528,4 @@ private:
     );
 };
 
-} // namespace tri3ds
+} // namespace tri3d

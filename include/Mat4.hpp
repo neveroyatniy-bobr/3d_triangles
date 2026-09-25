@@ -11,19 +11,19 @@ namespace tri3d {
 
 // Четырёхмерный вектор.
 //
-// Нужен прежде всего для homogeneous coordinates,
-// используемых 3D rendering pipeline.
+// Используется прежде всего для homogeneous coordinates
+// в 3D rendering pipeline.
 //
-// Точка из Vec3 представляется как:
+// 3D-точка:
 //
 //     { x, y, z, 1 }
 //
-// Направление представляется как:
+// 3D-направление:
 //
 //     { x, y, z, 0 }
 //
-// После perspective projection значение w обязательно
-// сохраняется до выполнения perspective divide.
+// После perspective projection значение w необходимо
+// сохранить до выполнения perspective divide.
 struct Vec4
 {
     float x = 0.0f;
@@ -33,8 +33,8 @@ struct Vec4
 };
 
 
-// Арифметика Vec4 нужна в том числе Renderer для будущего
-// clipping/interpolation в homogeneous coordinates.
+// Арифметика Vec4 нужна Renderer в том числе
+// для будущего clipping/interpolation.
 
 [[nodiscard]]
 Vec4 operator+(
@@ -70,7 +70,9 @@ Vec4 operator*(
 
 // Матрица 4x4.
 //
-// Соглашения движка:
+// ============================================================
+// СОГЛАШЕНИЯ ДВИЖКА
+// ============================================================
 //
 // 1. Хранение:
 //
@@ -78,25 +80,32 @@ Vec4 operator*(
 //
 // 2. Векторы считаются COLUMN vectors.
 //
-// 3. Вектор преобразуется так:
+// 3. Преобразование вектора:
 //
 //        result = matrix * vector
 //
-// 4. Если используется несколько преобразований:
+// 4. Несколько преобразований:
 //
-//        result = projection * view * world
+//        clip = projection * view * world
 //
-//    то самая правая матрица применяется первой.
+//    То есть самая правая матрица применяется первой.
 //
-// 5. Система координат движка правосторонняя.
+// 5. Используется правосторонняя система координат.
 //
 // 6. В VIEW SPACE камера смотрит вдоль -Z.
 //
-// 7. Canonical NDC:
+// 7. Используется Vulkan-compatible NDC:
 //
 //        X: [-1, +1]
 //        Y: [-1, +1]
-//        Z: [-1, +1]
+//        Z: [ 0, +1]
+//
+// 8. Y внутри projection matrix НЕ переворачивается.
+//
+//    Vulkan Renderer будет переворачивать viewport
+//    при помощи отрицательного VkViewport::height.
+//
+// ============================================================
 //
 // Default initialization:
 //
@@ -115,7 +124,7 @@ struct Mat4
 
 
 // ============================================================
-// Basic operations
+// Basic matrix operations
 // ============================================================
 
 // Возвращает единичную матрицу:
@@ -135,11 +144,11 @@ Mat4 identityMatrix() noexcept;
 //
 //     Mat4 result = A * B;
 //
-// и:
+// выражение:
 //
 //     result * vector
 //
-// сначала к vector применяется B,
+// сначала применяет B,
 // затем A.
 //
 // Например:
@@ -148,7 +157,11 @@ Mat4 identityMatrix() noexcept;
 //
 // означает:
 //
-//     world -> view -> clip
+//     world-space
+//         ->
+//     view-space
+//         ->
+//     clip-space
 //
 [[nodiscard]]
 Mat4 operator*(
@@ -157,12 +170,15 @@ Mat4 operator*(
 ) noexcept;
 
 
-// Умножает матрицу 4x4 на Vec4.
+// Умножает Mat4 на homogeneous Vec4.
 //
 // Формально:
 //
 //     result[row] =
-//         sum(matrix[row][column] * vector[column])
+//         sum(
+//             matrix[row][column] *
+//             vector[column]
+//         )
 //
 [[nodiscard]]
 Vec4 operator*(
@@ -175,26 +191,26 @@ Vec4 operator*(
 // Homogeneous coordinates
 // ============================================================
 
-// Превращает 3D-точку в homogeneous Vec4.
+// Преобразует Vec3-точку в homogeneous coordinates.
 //
 // Возвращает:
 //
 //     { x, y, z, 1 }
 //
-// Translation matrix должна воздействовать на такую величину.
+// Translation должен воздействовать на такую величину.
 [[nodiscard]]
 Vec4 pointToHomogeneous(
     const Vec3& point
 ) noexcept;
 
 
-// Превращает 3D-направление в homogeneous Vec4.
+// Преобразует Vec3-направление в homogeneous coordinates.
 //
 // Возвращает:
 //
 //     { x, y, z, 0 }
 //
-// Translation matrix НЕ должна воздействовать на direction.
+// Translation НЕ должен воздействовать на direction.
 [[nodiscard]]
 Vec4 directionToHomogeneous(
     const Vec3& direction
@@ -207,18 +223,23 @@ Vec4 directionToHomogeneous(
 //     y = vector.y / vector.w
 //     z = vector.z / vector.w
 //
-// Возвращённый Vec3 находится в NDC.
+// Возвращённый Vec3 находится в Vulkan NDC:
+//
+//     X: [-1, +1]
+//     Y: [-1, +1]
+//     Z: [ 0, +1]
 //
 // PRECONDITION:
 //
 //     vector.w != 0
 //
 // Функция намеренно noexcept и не делает runtime-проверку,
-// потому что потенциально вызывается для огромного количества
+// потому что может вызываться для очень большого количества
 // вершин.
 //
-// Renderer обязан убедиться, что вершина корректна для
-// perspective divide.
+// Renderer отвечает за корректный clipping и за то,
+// что perspective divide выполняется только тогда,
+// когда это допустимо.
 [[nodiscard]]
 Vec3 perspectiveDivide(
     const Vec4& vector
@@ -244,14 +265,15 @@ Vec3 perspectiveDivide(
 //     Нормализованный world-space вектор,
 //     направленный туда, куда камера смотрит.
 //
-// Параметры right/up/forward считаются уже корректным
-// ортонормированным базисом.
+// Camera гарантирует, что:
 //
-// Camera отвечает за выполнение этого инварианта.
+//     right
+//     up
+//     forward
+//
+// образуют корректный ортонормированный базис.
 //
 // ------------------------------------------------------------
-//
-// ВАЖНО:
 //
 // forward означает физическое направление взгляда.
 //
@@ -264,29 +286,29 @@ Vec3 perspectiveDivide(
 //
 //     forward = { 0, 0, -1 }
 //
-// При этом в VIEW SPACE соглашение движка:
+// При этом в VIEW SPACE камера всегда смотрит вдоль:
 //
-//     камера смотрит вдоль -Z.
+//     -Z
 //
 // ------------------------------------------------------------
 //
-// После преобразования:
+// После:
 //
 //     view * pointToHomogeneous(position)
 //
-// должно получиться:
+// положение камеры должно стать:
 //
 //     { 0, 0, 0, 1 }
 //
-// Точка перед камерой:
+// А точка перед камерой:
 //
 //     position + forward * distance
 //
-// должна получить:
+// после View Transform должна иметь:
 //
-//     viewSpace.z < 0
+//     z < 0
 //
-// при:
+// если:
 //
 //     distance > 0
 //
@@ -303,7 +325,8 @@ Mat4 makeViewMatrix(
 // Perspective projection
 // ============================================================
 
-// Создаёт perspective projection matrix.
+// Создаёт perspective projection matrix,
+// совместимую с Vulkan.
 //
 // verticalFovRadians:
 //     Вертикальный угол обзора в РАДИАНАХ.
@@ -312,60 +335,72 @@ Mat4 makeViewMatrix(
 //     width / height viewport.
 //
 // nearPlane:
-//     Положительное расстояние от камеры
+//     Положительное расстояние от Camera
 //     до ближней clipping plane.
 //
 // farPlane:
-//     Положительное расстояние от камеры
+//     Положительное расстояние от Camera
 //     до дальней clipping plane.
 //
 // Требования:
 //
+//     verticalFovRadians finite
+//
 //     0 < verticalFovRadians < pi
+//
+//     aspectRatio finite
 //
 //     aspectRatio > 0
 //
+//     nearPlane finite
+//
 //     nearPlane > 0
+//
+//     farPlane finite
 //
 //     farPlane > nearPlane
 //
-// Все значения должны быть finite.
-//
-// При некорректном аргументе функция должна бросать:
+// При некорректных параметрах функция бросает:
 //
 //     std::invalid_argument
 //
 // ------------------------------------------------------------
 //
-// Используем:
+// Соглашения:
 //
-//     right-handed coordinates
+//     right-handed coordinate system
 //
-// view-space camera direction:
+//     view-space camera direction = -Z
 //
-//     -Z
-//
-// canonical NDC:
+// Vulkan NDC:
 //
 //     X: [-1, +1]
 //     Y: [-1, +1]
-//     Z: [-1, +1]
+//     Z: [ 0, +1]
 //
-// near plane после perspective divide:
+// После perspective divide:
 //
-//     z = -1
+//     near plane -> z = 0
+//     far plane  -> z = 1
 //
-// far plane:
-//
-//     z = +1
-//
-// Следовательно canonical clip volume:
+// Vulkan clip volume:
 //
 //     -w <= x <= w
 //     -w <= y <= w
-//     -w <= z <= w
+//      0 <= z <= w
 //
-// Renderer может использовать эти условия для clipping.
+// ------------------------------------------------------------
+//
+// ВАЖНО:
+//
+// Y внутри этой матрицы НЕ переворачивать.
+//
+// Renderer использует Vulkan viewport с:
+//
+//     viewport.height < 0
+//
+// чтобы согласовать экранную систему координат
+// с нашей математикой.
 //
 [[nodiscard]]
 Mat4 makePerspectiveMatrix(
